@@ -15,19 +15,6 @@ $thumbScale = 0.85;
 
 function thumbConfig(string $thumbRel, int $number, int $column, float $scale): array
 {
-    // 同名的 .sec 侧写文件 (由 sprite.sh 写入) 记录实际网格 number/column
-    $sidecarRel = preg_replace('/\.[^.]+$/', '.sec', $thumbRel);
-    if ($sidecarRel !== null && $sidecarRel !== $thumbRel) {
-        $sidecar = $GLOBALS['videoDir'] . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $sidecarRel);
-        if (is_file($sidecar) && is_readable($sidecar)) {
-            $meta = json_decode((string)file_get_contents($sidecar), true);
-            if (is_array($meta)) {
-                if (isset($meta['number']) && (int)$meta['number'] > 0) $number = (int)$meta['number'];
-                if (isset($meta['column']) && (int)$meta['column'] > 0) $column = (int)$meta['column'];
-            }
-        }
-    }
-
     return [
         'url' => playUrl($thumbRel),
         'number' => $number,
@@ -86,12 +73,31 @@ function listVideos(string $dir, array $videoExts, array $subExts, array $thumbE
             }
 
             $thumbnails = null;
-            foreach ($thumbExts as $te) {
-                $candidate = $file->getPath() . DIRECTORY_SEPARATOR . $base . '.' . $te;
-                if (is_file($candidate) && is_readable($candidate)) {
-                    $thumbRel = ltrim(str_replace('\\', '/', substr($candidate, strlen($root))), '/');
-                    $thumbnails = thumbConfig($thumbRel, $GLOBALS['thumbNumber'], $GLOBALS['thumbColumn'], $GLOBALS['thumbScale']);
-                    break;
+            $thumbDir = $file->getPath();
+            $thumbPrefix = preg_quote($base . '.', '/');
+            $bestCells = 0;
+            foreach (['*.jpg', '*.jpeg'] as $thumbTail) {
+                foreach (glob($thumbDir . DIRECTORY_SEPARATOR . $base . '.' . $thumbTail) as $cand) {
+                    if (!preg_match('/^' . $thumbPrefix . '(\d+)x(\d+)\.(?:jpg|jpeg)$/i', pathinfo($cand, PATHINFO_BASENAME), $m)) continue;
+                    $cols = (int)$m[1];
+                    $rows = (int)$m[2];
+                    if ($cols < 1 || $rows < 1) continue;
+                    $cells = $cols * $rows;
+                    if ($cells <= $bestCells) continue;
+                    $bestCells = $cells;
+                    $thumbRel = ltrim(str_replace('\\', '/', substr($cand, strlen($root))), '/');
+                    $thumbnails = thumbConfig($thumbRel, $rows * $cols, $cols, $GLOBALS['thumbScale']);
+                }
+            }
+            // 兼容旧格式 <base>.jpg (无网格信息, 使用默认 54/6)
+            if ($thumbnails === null) {
+                foreach ($thumbExts as $te) {
+                    $candidate = $thumbDir . DIRECTORY_SEPARATOR . $base . '.' . $te;
+                    if (is_file($candidate) && is_readable($candidate)) {
+                        $thumbRel = ltrim(str_replace('\\', '/', substr($candidate, strlen($root))), '/');
+                        $thumbnails = thumbConfig($thumbRel, $GLOBALS['thumbNumber'], $GLOBALS['thumbColumn'], $GLOBALS['thumbScale']);
+                        break;
+                    }
                 }
             }
 
@@ -111,7 +117,7 @@ function listVideos(string $dir, array $videoExts, array $subExts, array $thumbE
                 'mtime' => $file->getMTime(),
                 'subtitle' => $subs ?: null,
                 'thumbnails' => $thumbnails,
-                'poster' => $poster,
+                'poster' => $poster ?? ($thumbnails['url'] ?? null),
             ];
         }
     }

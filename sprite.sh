@@ -1,6 +1,7 @@
 #!/bin/sh
 # sprite.sh <视频文件>
-# 在视频所在目录生成同名精灵图 (xx.mp4 -> xx.jpg), 供 Artplayer 进度条预览
+# 在视频所在目录生成精灵图 (xx.mp4 -> xx_列x行.jpg, 如 a_16x18.jpg),
+# 网格信息记录在文件名中, 供后端解析; 也供 Artplayer 进度条预览
 
 set -u
 
@@ -13,13 +14,11 @@ DIR=$(dirname "$SRC")
 BASE=$(basename "$SRC")
 NAME="${BASE%.*}"
 
-SPRITE="$DIR/$NAME.jpg"
 LOG="$DIR/$NAME.log"
-SEC="$DIR/$NAME.sec"
 PROG="$DIR/$NAME.prog"
 TMP="$DIR/.$NAME.sprite.tmp.jpg"
 
-rm -f "$LOG" "$SEC" "$PROG" "$TMP"
+rm -f "$LOG" "$PROG" "$TMP"
 touch "$LOG"
 
 # 1. 探测时长
@@ -53,6 +52,7 @@ if [ -n "$DUR" ] && [ "$DUR" != "0" ] && [ "$DUR" != "0.000" ]; then
     INTERVAL=${REST#* }
 fi
 NUMBER=$((COLS * ROWS))
+SPRITE="$DIR/$NAME.${COLS}x${ROWS}.jpg"
 
 # 3. 生成精灵图到临时文件, 成功后再原子替换, 避免半成品
 if ! ffmpeg -nostdin -y -i "$SRC" -vf "fps=1/${INTERVAL},scale=160:-2,tile=${COLS}x${ROWS}" -frames:v 1 -q:v 3 -an "$TMP" >>"$LOG" 2>&1; then
@@ -61,7 +61,7 @@ if ! ffmpeg -nostdin -y -i "$SRC" -vf "fps=1/${INTERVAL},scale=160:-2,tile=${COL
     exit 1
 fi
 mv -f "$TMP" "$SPRITE"
-printf '{"number":%d,"column":%d}\n' "$NUMBER" "$COLS" > "$SEC"
 rm -f "$PROG"
 echo "OK: $SPRITE (dur=${DUR}s, grid=${COLS}x${ROWS}, interval=${INTERVAL}s)" >>"$LOG"
+rm -f "$LOG"
 exit 0
