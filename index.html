@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title>视频墙</title>
+<script src="/static/artplayer.js"></script>
+<script src="/static/hls.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0f;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;min-height:100vh;padding-bottom:80px}
+.header{position:sticky;top:0;z-index:100;background:linear-gradient(135deg,#0f0f1a 0%,#1a1a2e 100%);padding:16px 20px;display:flex;align-items:center;justify-content:space-between;backdrop-filter:blur(10px);border-bottom:1px solid rgba(255,255,255,.06)}
+.header h1{font-size:20px;font-weight:700;background:linear-gradient(90deg,#23ade5,#7c3aed);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header .count{font-size:13px;color:#888;background:rgba(255,255,255,.06);padding:4px 12px;border-radius:20px}
+.video-wall{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;padding:16px;max-width:1200px;margin:0 auto}
+@media(min-width:640px){.video-wall{grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;padding:20px}}
+.video-card{position:relative;border-radius:12px;overflow:hidden;cursor:pointer;background:#14141f;transition:transform .25s ease,box-shadow .25s ease;aspect-ratio:2/3}
+.video-card:hover{transform:translateY(-4px);box-shadow:0 12px 32px rgba(35,173,229,.2)}
+.video-card:active{transform:scale(.97)}
+.video-card .poster{width:100%;height:100%;object-fit:cover;display:block;transition:transform .3s ease}
+.video-card:hover .poster{transform:scale(1.05)}
+.video-card .overlay{position:absolute;inset:0;background:linear-gradient(transparent 50%,rgba(0,0,0,.85));pointer-events:none}
+.video-card .play-icon{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:48px;height:48px;background:rgba(35,173,229,.9);border-radius:50%;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .25s ease;pointer-events:none}
+.video-card .play-icon::after{content:'';display:block;width:0;height:0;border-top:10px solid transparent;border-bottom:10px solid transparent;border-left:16px solid #fff;margin-left:4px}
+.video-card:hover .play-icon{opacity:1}
+.video-card .title{position:absolute;bottom:0;left:0;right:0;padding:12px;font-size:13px;font-weight:600;line-height:1.3;text-shadow:0 1px 4px rgba(0,0,0,.8);pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.video-card .subtitle{position:absolute;top:8px;right:8px;font-size:11px;color:#23ade5;background:rgba(0,0,0,.6);padding:2px 8px;border-radius:10px;pointer-events:none}
+.loading{text-align:center;padding:60px 20px;color:#666}
+.loading .spinner{width:40px;height:40px;border:3px solid rgba(35,173,229,.15);border-top-color:#23ade5;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading p{font-size:14px}
+.error{text-align:center;padding:60px 20px;color:#888;font-size:14px;line-height:1.8}
+.error .retry{display:inline-block;margin-top:12px;padding:8px 24px;background:#23ade5;color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer}
+.player-section{max-width:1200px;margin:0 auto;padding:0 16px}
+@media(min-width:640px){.player-section{padding:0 20px}}
+.player-section.hidden{display:none}
+.player-section .player-wrap{position:relative;width:100%;aspect-ratio:16/9;background:#000;border-radius:12px;overflow:hidden;margin-top:16px}
+.player-section .player-wrap .artplayer-app{width:100%;height:100%}
+.player-section .player-wrap video{width:100%;height:100%;display:block}
+.player-section .player-bar{display:flex;align-items:center;justify-content:space-between;padding:12px 0 0}
+.player-section .player-bar .video-title{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-right:12px}
+.player-section .player-bar .close-btn{flex-shrink:0;padding:6px 16px;background:rgba(255,255,255,.08);border:none;color:#aaa;font-size:13px;border-radius:8px;cursor:pointer;transition:background .2s}
+.player-section .player-bar .close-btn:hover{background:rgba(255,255,255,.15);color:#fff}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🎬 视频墙</h1>
+  <span class="count" id="videoCount">0 部</span>
+</div>
+<div class="player-section hidden" id="playerSection">
+  <div class="player-bar">
+    <span class="video-title" id="playerTitle"></span>
+    <button class="close-btn" onclick="closePlayer()">关闭</button>
+  </div>
+  <div class="player-wrap">
+    <div class="artplayer-app" id="artplayerContainer"></div>
+  </div>
+</div>
+<div class="video-wall" id="videoWall"></div>
+<div class="loading" id="loading">
+  <div class="spinner"></div>
+  <p>正在加载视频列表...</p>
+</div>
+<div class="error" id="error" style="display:none">
+  <p>加载失败，请检查网络连接</p>
+  <button class="retry" onclick="loadVideos()">重试</button>
+</div>
+<script>
+let art = null
+let nativeVideo = null
+
+function closePlayer() {
+  if (art) { art.destroy(); art = null }
+  if (nativeVideo) { nativeVideo.pause(); nativeVideo.src = ''; nativeVideo = null }
+  document.getElementById('playerSection').classList.add('hidden')
+}
+
+async function loadVideos() {
+  const wall = document.getElementById('videoWall')
+  const loading = document.getElementById('loading')
+  const errorEl = document.getElementById('error')
+  wall.innerHTML = ''
+  loading.style.display = 'block'
+  errorEl.style.display = 'none'
+
+  try {
+    const resp = await fetch('palayer.php?_=' + Date.now(), { cache: 'no-cache' })
+    if (!resp.ok) throw new Error('HTTP ' + resp.status)
+    const data = await resp.json()
+    loading.style.display = 'none'
+    const list = Array.isArray(data) ? data : (data && Array.isArray(data.videos) ? data.videos : [])
+    document.getElementById('videoCount').textContent = list.length + ' 部'
+    list.forEach(v => wall.appendChild(createCard(v)))
+  } catch (e) {
+    loading.style.display = 'none'
+    errorEl.style.display = 'block'
+    console.error('Load failed:', e)
+  }
+}
+
+function createCard(v) {
+  const card = document.createElement('div')
+  card.className = 'video-card'
+  card.dataset.url = v.url || ''
+
+  const video = document.createElement('video')
+  video.className = 'poster'
+  video.preload = 'metadata'
+  video.muted = true
+  video.playsInline = true
+  video.src = v.url || ''
+  video.onerror = function() { showPosterFallback(video, v) }
+  video.addEventListener('loadeddata', function() {
+    try { this.currentTime = 0.1 } catch (e) {}
+  }, { once: true })
+  video.addEventListener('seeked', function() {
+    if (this.readyState >= 2) { this.pause() }
+  }, { once: true })
+
+  const overlay = document.createElement('div')
+  overlay.className = 'overlay'
+
+  const playIcon = document.createElement('div')
+  playIcon.className = 'play-icon'
+
+  const title = document.createElement('div')
+  title.className = 'title'
+  title.textContent = v.title || ''
+
+  if (v.subtitle) {
+    const sub = document.createElement('div')
+    sub.className = 'subtitle'
+    const subs = Array.isArray(v.subtitle) ? v.subtitle : [v.subtitle]
+    sub.textContent = subs.map(s => typeof s === 'object' ? (s.title || s.label) : (String(s).split('/').pop() || 'SUB')).join(' / ')
+    card.appendChild(sub)
+  }
+
+  card.append(video, overlay, playIcon, title)
+
+  card.addEventListener('click', () => openPlayer(v))
+  return card
+}
+
+function showPosterFallback(video, v) {
+  var cns = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  cns.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+  cns.setAttribute('viewBox', '0 0 200 300')
+  cns.innerHTML = '<rect fill="#222233" width="200" height="300"/><text x="100" y="150" text-anchor="middle" fill="#666" font-size="14">' + (v.ext || '').toUpperCase() + '</text>'
+  var data = 'data:image/svg+xml,' + encodeURIComponent(cns.outerHTML)
+  var img = document.createElement('img')
+  img.className = 'poster'
+  img.src = data
+  img.alt = v.title || ''
+  video.replaceWith(img)
+}
+
+function openPlayer(v) {
+  closePlayer()
+  const titleEl = document.getElementById('playerTitle')
+  titleEl.textContent = v.title || ''
+  var wrap = document.getElementById('artplayerContainer')
+  document.getElementById('playerSection').classList.remove('hidden')
+
+  if (window.Artplayer) {
+    try {
+      var config = {
+        container: wrap,
+        fastForward: true,
+        url: v.url || '',
+        poster: '',
+        title: v.title || '',
+        volume: 0.5,
+        isLive: false,
+        muted: false,
+        autoplay: true,
+        pip: true,
+        autoSize: true,
+        autoMini: false,
+        screenshot: true,
+        setting: true,
+        loop: false,
+        flip: true,
+        playbackRate: true,
+        aspectRatio: true,
+        fullscreen: true,
+        fullscreenWeb: true,
+        miniProgressBar: true,
+        mutex: true,
+        backdrop: true,
+        playsInline: true,
+        airplay: true,
+        theme: '#23ade5',
+        lang: navigator.language.toLowerCase(),
+      }
+
+      var subData = v.subtitle
+      if (subData) {
+        var subs = Array.isArray(subData) ? subData : [subData]
+        var selectors = [{
+          html: '显示',
+          tooltip: '显示',
+          switch: true,
+          onSwitch: function(item) {
+            item.tooltip = item.switch ? '隐藏' : '显示'
+            art.subtitle.show = !item.switch
+            return !item.switch
+          },
+        }]
+        subs.forEach(function(s, i) {
+          var sRawUrl = typeof s === 'object' ? s.url : s
+          var sLabel = typeof s === 'object' ? (s.title || s.label) : (String(sRawUrl).split('/').pop() || '字幕 ' + (i + 1))
+          if (!sRawUrl) return
+          selectors.push({ default: i === 0, html: sLabel, url: sRawUrl })
+          if (i === 0) {
+            config.subtitle = {
+              url: sRawUrl,
+              type: sRawUrl.match(/\.(vtt|ass|ssa)(\?|$)/i) ? 'vtt' : 'srt',
+              style: { color: '#fe9200', fontSize: '20px' },
+              encoding: 'utf-8',
+            }
+          }
+        })
+        if (selectors.length > 1) {
+          config.settings = [{
+            width: 200,
+            html: '字幕',
+            tooltip: '双语',
+            icon: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="14" y2="16"/></svg>',
+            selector: selectors,
+            onSelect: function(item) {
+              art.subtitle.switch(item.url, { name: item.html })
+              return item.html
+            },
+          }]
+        }
+      }
+
+      if (v.url && /\.m3u8(\?|$)/i.test(v.url)) {
+        config.customType = {
+          m3u8: function playM3u8(video, url) {
+            if (Hls.isSupported()) {
+              var hls = new Hls()
+              hls.loadSource(url)
+              hls.attachMedia(video)
+              art.hls = hls
+              art.on('destroy', () => hls.destroy())
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+              video.src = url
+            } else {
+              art.notice.show = '不支持的播放格式: m3u8'
+            }
+          },
+        }
+      }
+
+      art = new Artplayer(config)
+      return
+    } catch (e) {
+      console.error('Artplayer failed:', e)
+    }
+  }
+
+  const nv = document.createElement('video')
+  nv.controls = true
+  nv.autoplay = true
+  nv.playsInline = true
+  nv.src = v.url || ''
+  wrap.innerHTML = ''
+  wrap.appendChild(nv)
+  nativeVideo = nv
+}
+
+loadVideos()
+</script>
+</body>
+</html>
