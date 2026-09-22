@@ -30,19 +30,38 @@ else
     [ -n "$DUR" ] && DUR=$(echo "$DUR" | awk -F: '{ printf "%.3f", $1*3600+$2*60+$3 }')
 fi
 
-# 2. 计算采样间隔: 全片取 ~54 帧 (6x9 格)
-case "$DUR" in
-    ""|0|0.000) INTERVAL=10 ;;
-    *) INTERVAL=$(awk -v d="$DUR" 'BEGIN{ i=(d/54)*0.97; if (i<0.05) i=0.05; printf "%.3f", i }') ;;
-esac
+# 2. 按时长选网格 (列x行): 保证每帧间隔 <= 30s, 最长视频最多 16x18=288 帧
+COLS=6
+ROWS=9
+INTERVAL=10
+if [ -n "$DUR" ] && [ "$DUR" != "0" ] && [ "$DUR" != "0.000" ]; then
+    GRID=$(awk -v d="$DUR" 'BEGIN{
+        n = split("6 9 54;10 10 100;12 14 168;16 18 288", g, ";");
+        c = 6; r = 9; cnt = 54;
+        for (i = 1; i <= n; i++) {
+            split(g[i], a, " ");
+            c = a[1]; r = a[2]; cnt = a[3];
+            if (d / cnt <= 30) break;
+        }
+        iv = (d / cnt) * 0.97;
+        if (iv < 0.05) iv = 0.05;
+        printf "%d %d %.3f", c, r, iv;
+    }')
+    COLS=${GRID%% *}
+    REST=${GRID#* }
+    ROWS=${REST%% *}
+    INTERVAL=${REST#* }
+fi
+NUMBER=$((COLS * ROWS))
 
 # 3. 生成精灵图到临时文件, 成功后再原子替换, 避免半成品
-if ! ffmpeg -nostdin -y -i "$SRC" -vf "fps=1/$INTERVAL,scale=160:-2,tile=6x9" -frames:v 1 -q:v 3 -an "$TMP" >>"$LOG" 2>&1; then
+if ! ffmpeg -nostdin -y -i "$SRC" -vf "fps=1/${INTERVAL},scale=160:-2,tile=${COLS}x${ROWS}" -frames:v 1 -q:v 3 -an "$TMP" >>"$LOG" 2>&1; then
     rm -f "$TMP" "$PROG"
     echo "FAILED: $SRC" >>"$LOG"
     exit 1
 fi
 mv -f "$TMP" "$SPRITE"
+printf '{"number":%d,"column":%d}\n' "$NUMBER" "$COLS" > "$SEC"
 rm -f "$PROG"
-echo "OK: $SPRITE (dur=${DUR}s, interval=${INTERVAL}s)" >>"$LOG"
+echo "OK: $SPRITE (dur=${DUR}s, grid=${COLS}x${ROWS}, interval=${INTERVAL}s)" >>"$LOG"
 exit 0
