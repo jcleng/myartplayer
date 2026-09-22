@@ -104,19 +104,15 @@ function createCard(v) {
   card.className = 'video-card'
   card.dataset.url = v.url || ''
 
-  const video = document.createElement('video')
-  video.className = 'poster'
-  video.preload = 'metadata'
-  video.muted = true
-  video.playsInline = true
-  video.src = v.url || ''
-  video.onerror = function() { showPosterFallback(video, v) }
-  video.addEventListener('loadeddata', function() {
-    try { this.currentTime = 0.1 } catch (e) {}
-  }, { once: true })
-  video.addEventListener('seeked', function() {
-    if (this.readyState >= 2) { this.pause() }
-  }, { once: true })
+  let poster = null
+  if (v.poster) {
+    poster = document.createElement('img')
+    poster.className = 'poster'
+    poster.alt = ''
+    poster.referrerPolicy = 'no-referrer'
+    poster.onerror = function() { poster.remove(); poster = null }
+    poster.src = v.poster
+  }
 
   const overlay = document.createElement('div')
   overlay.className = 'overlay'
@@ -136,23 +132,11 @@ function createCard(v) {
     card.appendChild(sub)
   }
 
-  card.append(video, overlay, playIcon, title)
+  if (poster) card.appendChild(poster)
+  card.append(overlay, playIcon, title)
 
   card.addEventListener('click', () => openPlayer(v))
   return card
-}
-
-function showPosterFallback(video, v) {
-  var cns = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-  cns.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
-  cns.setAttribute('viewBox', '0 0 200 300')
-  cns.innerHTML = '<rect fill="#222233" width="200" height="300"/><text x="100" y="150" text-anchor="middle" fill="#666" font-size="14">' + (v.ext || '').toUpperCase() + '</text>'
-  var data = 'data:image/svg+xml,' + encodeURIComponent(cns.outerHTML)
-  var img = document.createElement('img')
-  img.className = 'poster'
-  img.src = data
-  img.alt = v.title || ''
-  video.replaceWith(img)
 }
 
 function openPlayer(v) {

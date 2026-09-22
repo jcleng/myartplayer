@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-$videoDir = rtrim((string)(getenv('VIDEO_DIR') ?: '/app/video'), '/');
+$videoDir = rtrim((string)(getenv('VIDEO_DIR') ?: '/home/jcleng/Downloads/mv/upnp/'), '/');
 
 $videoExts = [
     'mp4', 'm4v', 'webm', 'mkv', 'avi', 'mov', 'flv', 'wmv',
@@ -82,6 +82,13 @@ function listVideos(string $dir, array $videoExts, array $subExts, array $thumbE
                 }
             }
 
+            $poster = null;
+            $posterCandidate = $file->getPath() . DIRECTORY_SEPARATOR . $base . '.thumbnail.jpg';
+            if (is_file($posterCandidate) && is_readable($posterCandidate)) {
+                $posterRel = ltrim(str_replace('\\', '/', substr($posterCandidate, strlen($root))), '/');
+                $poster = playUrl($posterRel);
+            }
+
             $videos[] = [
                 'title' => $base,
                 'file' => $rel,
@@ -91,6 +98,7 @@ function listVideos(string $dir, array $videoExts, array $subExts, array $thumbE
                 'mtime' => $file->getMTime(),
                 'subtitle' => $subs ?: null,
                 'thumbnails' => $thumbnails,
+                'poster' => $poster,
             ];
         }
     }
@@ -108,7 +116,12 @@ function listVideos(string $dir, array $videoExts, array $subExts, array $thumbE
 function playUrl(string $rel): string
 {
     $self = basename($_SERVER['SCRIPT_NAME'] ?? 'palayer.php');
-    return $self . '?play=' . rawurlencode($rel);
+    return $self . '?play=' . encodeRel($rel);
+}
+
+function encodeRel(string $rel): string
+{
+    return str_replace('%2F', '/', rawurlencode($rel));
 }
 
 function streamVideo(string $dir, string $rel, array $videoExts, array $subExts, array $thumbExts): void
@@ -167,6 +180,11 @@ function streamVideo(string $dir, string $rel, array $videoExts, array $subExts,
     }
 
     $length = $end - $start + 1;
+
+    // 媒体流允许浏览器缓存, 避免 no-store 导致每次 seek/重试都回源
+    header_remove('Cache-Control');
+    header('Cache-Control: private, max-age=3600');
+    header('Last-Modified: ' . gmdate('D, d M Y H:i:s', (int)filemtime($full)) . ' GMT');
 
     http_response_code($status);
     header('Content-Type: ' . $mime);
