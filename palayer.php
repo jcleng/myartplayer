@@ -8,20 +8,34 @@ $videoExts = [
     'mpg', 'mpeg', 'ts', 'm2ts', 'ogv', '3gp', 'm3u8',
 ];
 $subExts = ['srt', 'vtt', 'ass', 'ssa'];
+$thumbExts = ['jpg', 'jpeg']; // 同名的精灵图, Artplayer progress preview
+$thumbNumber = 54;  // 6 * 9 = tile 行*列
+$thumbColumn = 6;   // tile 的第一维(列数)
+$thumbScale = 0.85;
+
+function thumbConfig(string $thumbRel, int $number, int $column, float $scale): array
+{
+    return [
+        'url' => playUrl($thumbRel),
+        'number' => $number,
+        'column' => $column,
+        'scale' => $scale,
+    ];
+}
 
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Expose-Headers: Accept-Ranges, Content-Range, Content-Length');
 header('Cache-Control: no-cache, no-store, must-revalidate');
 
 if (isset($_GET['play'])) {
-    streamVideo($videoDir, (string)$_GET['play'], $videoExts, $subExts);
+    streamVideo($videoDir, (string)$_GET['play'], $videoExts, $subExts, $thumbExts);
     exit;
 }
 
-listVideos($videoDir, $videoExts, $subExts);
+listVideos($videoDir, $videoExts, $subExts, $thumbExts);
 exit;
 
-function listVideos(string $dir, array $videoExts, array $subExts): void
+function listVideos(string $dir, array $videoExts, array $subExts, array $thumbExts): void
 {
     header('Content-Type: application/json; charset=utf-8');
 
@@ -58,6 +72,16 @@ function listVideos(string $dir, array $videoExts, array $subExts): void
                 }
             }
 
+            $thumbnails = null;
+            foreach ($thumbExts as $te) {
+                $candidate = $file->getPath() . DIRECTORY_SEPARATOR . $base . '.' . $te;
+                if (is_file($candidate) && is_readable($candidate)) {
+                    $thumbRel = ltrim(str_replace('\\', '/', substr($candidate, strlen($root))), '/');
+                    $thumbnails = thumbConfig($thumbRel, $GLOBALS['thumbNumber'], $GLOBALS['thumbColumn'], $GLOBALS['thumbScale']);
+                    break;
+                }
+            }
+
             $videos[] = [
                 'title' => $base,
                 'file' => $rel,
@@ -66,6 +90,7 @@ function listVideos(string $dir, array $videoExts, array $subExts): void
                 'size' => $file->getSize(),
                 'mtime' => $file->getMTime(),
                 'subtitle' => $subs ?: null,
+                'thumbnails' => $thumbnails,
             ];
         }
     }
@@ -86,7 +111,7 @@ function playUrl(string $rel): string
     return $self . '?play=' . rawurlencode($rel);
 }
 
-function streamVideo(string $dir, string $rel, array $videoExts, array $subExts): void
+function streamVideo(string $dir, string $rel, array $videoExts, array $subExts, array $thumbExts): void
 {
     $root = realpath($dir);
     $rel = str_replace("\0", '', $rel);
@@ -107,7 +132,7 @@ function streamVideo(string $dir, string $rel, array $videoExts, array $subExts)
     }
 
     $ext = strtolower(pathinfo($full, PATHINFO_EXTENSION));
-    if (!in_array($ext, array_merge($videoExts, $subExts), true)) {
+    if (!in_array($ext, array_merge($videoExts, $subExts, $thumbExts), true)) {
         http_response_code(403);
         header('Content-Type: text/plain; charset=utf-8');
         echo 'Forbidden';
@@ -192,6 +217,7 @@ function mimeByExt(string $ext): string
         'srt' => 'application/x-subrip',
         'ass', 'ssa' => 'text/plain; charset=utf-8',
         'vtt' => 'text/vtt; charset=utf-8',
+        'jpg', 'jpeg' => 'image/jpeg',
         default => 'application/octet-stream',
     };
 }

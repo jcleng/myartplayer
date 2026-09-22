@@ -198,6 +198,15 @@ function openPlayer(v) {
         },
       }
 
+      if (v.thumbnails && v.thumbnails.url) {
+        config.thumbnails = {
+          url: v.thumbnails.url,
+          number: v.thumbnails.number || 60,
+          column: v.thumbnails.column || 10,
+          scale: v.thumbnails.scale || 0.85,
+        }
+      }
+
       var subData = v.subtitle
       if (subData) {
         var subs = Array.isArray(subData) ? subData : [subData]
