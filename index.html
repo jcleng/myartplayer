@@ -192,6 +192,10 @@ function openPlayer(v) {
         airplay: true,
         theme: '#23ade5',
         lang: navigator.language.toLowerCase(),
+        moreVideoAttr: {
+          disablePictureInPicture: true,
+          controlsList: 'nodownload noplaybackrate noremoteplayback',
+        },
       }
 
       var subData = v.subtitle
@@ -255,6 +259,7 @@ function openPlayer(v) {
       }
 
       art = new Artplayer(config)
+      art.video.addEventListener('contextmenu', e => e.preventDefault())
       return
     } catch (e) {
       console.error('Artplayer failed:', e)
@@ -265,7 +270,10 @@ function openPlayer(v) {
   nv.controls = true
   nv.autoplay = true
   nv.playsInline = true
+  nv.disablePictureInPicture = true
+  nv.controlsList = 'nodownload noplaybackrate noremoteplayback'
   nv.src = v.url || ''
+  nv.addEventListener('contextmenu', e => e.preventDefault())
   wrap.innerHTML = ''
   wrap.appendChild(nv)
   nativeVideo = nv
