@@ -8,7 +8,7 @@ PHP_CLI_SERVER_WORKERS=20 php -S 0.0.0.0:12345
 
 ```shell
 # 封面图
-xx.thumbnail.jpg
-# 精灵图进度
 xx.jpg
+# 精灵图进度
+xx.6*9.jpg
 ```
