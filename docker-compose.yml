@@ -4,11 +4,11 @@ services:
     container_name: frankenphp
     environment:
       - "TIMEZONE=Asia/Shanghai"
-      - "VIDEO_DIR=/home/jcleng/work/mywork/myartplayer/.vscode/"
+      - "VIDEO_DIR=/app/public/file"
     # https://localhost:12356/
     ports:
       - "12356:443"
     volumes:
       - .:/app/public
       - ./Caddyfile:/etc/frankenphp/Caddyfile
-      - "/home/jcleng/work/mywork:/home/jcleng/work/mywork"
+      - "/home/jcleng/work/mywork/myartplayer/.vscode/:/app/public/file"

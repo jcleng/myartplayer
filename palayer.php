@@ -135,6 +135,7 @@ function listVideos(string $dir, array $videoExts, array $subExts, array $thumbE
 function playUrl(string $rel): string
 {
     $self = basename($_SERVER['SCRIPT_NAME'] ?? 'palayer.php');
+    return '/file/' . encodeRel($rel); // ! 配合Caddyfile
     return $self . '?play=' . encodeRel($rel);
 }
 
