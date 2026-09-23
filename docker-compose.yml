@@ -11,4 +11,4 @@ services:
     volumes:
       - .:/app/public
       - ./Caddyfile:/etc/frankenphp/Caddyfile
-      - "/home/jcleng/work/mywork/myartplayer/.vscode/:/app/public/file"
+      - "/home/jcleng/Downloads/mv/upnp/:/app/public/file"
