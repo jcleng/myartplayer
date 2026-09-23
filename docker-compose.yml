@@ -1,6 +1,7 @@
 services:
   frankenphp:
     image: registry.cn-hangzhou.aliyuncs.com/jcleng/dunglas-frankenphp
+    restart: unless-stopped
     container_name: frankenphp
     environment:
       - "TIMEZONE=Asia/Shanghai"
