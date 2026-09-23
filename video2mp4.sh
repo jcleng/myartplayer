@@ -13,3 +13,8 @@ ffmpeg -i "$SRC" \
   -c:a aac -b:a 128k -ac 2 -ar 44100 -profile:a aac_low \
   -c:s webvtt \
   "$FILENAME"
+
+# ! 生成缩略图
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+SPRITE="$SCRIPT_DIR/sprite.sh"
+sh "$SPRITE" "$FILENAME"
