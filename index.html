@@ -145,6 +145,7 @@ function openPlayer(v) {
   titleEl.textContent = v.title || ''
   var wrap = document.getElementById('artplayerContainer')
   document.getElementById('playerSection').classList.remove('hidden')
+  window.scrollTo(0, 0)
 
   if (window.Artplayer) {
     try {
