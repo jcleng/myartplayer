@@ -43,12 +43,16 @@ body{background:#0a0a0f;color:#fff;font-family:-apple-system,BlinkMacSystemFont,
 .player-section .player-wrap .artplayer-app{width:100%;height:100%}
 .player-section .player-wrap video{width:100%;height:100%;display:block;object-fit:contain}
 .player-section .player-bar{display:flex;align-items:center;justify-content:space-between;padding:12px 0 0}
-.player-section .player-bar .video-title{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-right:12px}
+.player-section .player-bar .video-title{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-right:12px;cursor:pointer;user-select:none;transition:color .2s}
+.player-section .player-bar .video-title:hover{color:#23ade5}
+.player-section .player-bar .video-title .copy-tip{font-size:11px;color:#888;font-weight:400;margin-left:8px}
 .player-section .player-bar .fav-btn{flex-shrink:0;padding:6px 14px;background:rgba(255,255,255,.08);border:none;color:#bbb;font-size:14px;border-radius:8px;cursor:pointer;transition:background .2s,color .2s}
 .player-section .player-bar .fav-btn:hover{background:rgba(255,255,255,.15);color:#fff}
 .player-section .player-bar .fav-btn.on{color:#ffd700;background:rgba(255,215,0,.14)}
 .player-section .player-bar .close-btn{flex-shrink:0;padding:6px 16px;background:rgba(255,255,255,.08);border:none;color:#aaa;font-size:13px;border-radius:8px;cursor:pointer;transition:background .2s}
 .player-section .player-bar .close-btn:hover{background:rgba(255,255,255,.15);color:#fff}
+.toast{position:fixed;top:18px;left:50%;transform:translateX(-50%) translateY(-10px);background:rgba(15,15,25,.9);color:#fff;padding:9px 20px;border-radius:10px;font-size:13px;z-index:1000;opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;box-shadow:0 6px 24px rgba(0,0,0,.4)}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 </style>
 </head>
 <body>
@@ -62,7 +66,7 @@ body{background:#0a0a0f;color:#fff;font-family:-apple-system,BlinkMacSystemFont,
 </div>
 <div class="player-section hidden" id="playerSection">
   <div class="player-bar">
-    <span class="video-title" id="playerTitle"></span>
+    <span class="video-title" id="playerTitle" title="点击复制文件链接" onclick="copyPlayerUrl()"><span id="playerTitleText"></span><span class="copy-tip">复制链接</span></span>
     <button class="fav-btn" id="playerFavBtn" onclick="togglePlayerFav()">☆</button>
     <button class="close-btn" onclick="closePlayer()">关闭</button>
   </div>
@@ -79,6 +83,7 @@ body{background:#0a0a0f;color:#fff;font-family:-apple-system,BlinkMacSystemFont,
   <p>加载失败，请检查网络连接</p>
   <button class="retry" onclick="loadVideos()">重试</button>
 </div>
+<div class="toast" id="toast"></div>
 <script>
 let art = null
 let nativeVideo = null
@@ -213,6 +218,46 @@ function togglePlayerFav() {
   if (currentVideo) toggleFav(currentVideo)
 }
 
+let toastTimer = null
+function showToast(msg) {
+  const t = document.getElementById('toast')
+  if (!t) return
+  t.textContent = msg
+  t.classList.add('show')
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => t.classList.remove('show'), 1600)
+}
+
+function copyText(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    return navigator.clipboard.writeText(text)
+  }
+  return new Promise(function(resolve, reject) {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.focus()
+    ta.select()
+    try {
+      document.execCommand('copy')
+      resolve()
+    } catch (e) {
+      reject(e)
+    }
+    ta.remove()
+  })
+}
+
+function copyPlayerUrl() {
+  const v = currentVideo
+  if (!v || !v.url) return
+  const url = v.url
+  // const url = new URL(v.url, location.href).href
+  copyText(url).then(() => showToast('已复制文件path')).catch(() => showToast('复制失败'))
+}
+
 async function toggleFav(v) {
   const target = !favSet.has(v.file)
   if (target) favSet.add(v.file); else favSet.delete(v.file)
@@ -240,8 +285,7 @@ async function toggleFav(v) {
 function openPlayer(v) {
   closePlayer()
   currentVideo = v
-  const titleEl = document.getElementById('playerTitle')
-  titleEl.textContent = v.title || ''
+  document.getElementById('playerTitleText').textContent = v.title || ''
   updateFavBtnUI()
   var wrap = document.getElementById('artplayerContainer')
   document.getElementById('playerSection').classList.remove('hidden')
