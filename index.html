@@ -9,9 +9,13 @@
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#0a0a0f;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;min-height:100vh;padding-bottom:80px}
-.header{position:sticky;top:0;z-index:100;background:linear-gradient(135deg,#0f0f1a 0%,#1a1a2e 100%);padding:16px 20px;display:flex;align-items:center;justify-content:space-between;backdrop-filter:blur(10px);border-bottom:1px solid rgba(255,255,255,.06)}
+.header{position:sticky;top:0;z-index:100;background:linear-gradient(135deg,#0f0f1a 0%,#1a1a2e 100%);padding:16px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;backdrop-filter:blur(10px);border-bottom:1px solid rgba(255,255,255,.06);flex-wrap:wrap}
 .header h1{font-size:20px;font-weight:700;background:linear-gradient(90deg,#23ade5,#7c3aed);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.header .count{font-size:13px;color:#888;background:rgba(255,255,255,.06);padding:4px 12px;border-radius:20px}
+.header .count{font-size:13px;color:#888;background:rgba(255,255,255,.06);padding:4px 12px;border-radius:20px;white-space:nowrap}
+.header .tabs{display:flex;gap:8px;align-items:center;order:3;width:100%}
+.header .tab{padding:6px 16px;border-radius:20px;background:rgba(255,255,255,.06);border:1px solid transparent;color:#aaa;font-size:13px;cursor:pointer;transition:background .2s,color .2s,border-color .2s;flex:1;max-width:140px}
+.header .tab.active{background:rgba(35,173,229,.2);color:#23ade5;border-color:rgba(35,173,229,.4);font-weight:600}
+@media(min-width:640px){.header .tabs{order:initial;width:auto}.header .tab{flex:none}}
 .video-wall{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;padding:16px;max-width:1200px;margin:0 auto}
 @media(min-width:640px){.video-wall{grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;padding:20px}}
 .video-card{position:relative;border-radius:12px;overflow:hidden;cursor:pointer;background:#14141f;transition:transform .25s ease,box-shadow .25s ease;aspect-ratio:2/3}
@@ -25,6 +29,10 @@ body{background:#0a0a0f;color:#fff;font-family:-apple-system,BlinkMacSystemFont,
 .video-card:hover .play-icon{opacity:1}
 .video-card .title{position:absolute;bottom:0;left:0;right:0;padding:12px;font-size:13px;font-weight:600;line-height:1.3;text-shadow:0 1px 4px rgba(0,0,0,.8);pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .video-card .subtitle{position:absolute;top:8px;right:8px;font-size:11px;color:#23ade5;background:rgba(0,0,0,.6);padding:2px 8px;border-radius:10px;pointer-events:none}
+.video-card .fav-btn{position:absolute;top:8px;left:8px;z-index:2;width:30px;height:30px;border:none;border-radius:50%;background:rgba(0,0,0,.55);color:#bbb;font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:color .2s,transform .15s;pointer-events:auto}
+.video-card .fav-btn.on{color:#ffd700;text-shadow:0 0 6px rgba(255,215,0,.6)}
+.video-card .fav-btn:active{transform:scale(.8)}
+.empty-hint{grid-column:1/-1;text-align:center;padding:40px 20px;color:#777;font-size:14px;line-height:1.8}
 .loading{text-align:center;padding:60px 20px;color:#666}
 .loading .spinner{width:40px;height:40px;border:3px solid rgba(35,173,229,.15);border-top-color:#23ade5;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -46,6 +54,10 @@ body{background:#0a0a0f;color:#fff;font-family:-apple-system,BlinkMacSystemFont,
 <body>
 <div class="header">
   <h1>🎬 视频墙</h1>
+  <div class="tabs">
+    <button class="tab active" id="tabAll" onclick="switchView('all')">全部</button>
+    <button class="tab" id="tabFav" onclick="switchView('fav')">收藏夹</button>
+  </div>
   <span class="count" id="videoCount">0 部</span>
 </div>
 <div class="player-section hidden" id="playerSection">
@@ -69,6 +81,10 @@ body{background:#0a0a0f;color:#fff;font-family:-apple-system,BlinkMacSystemFont,
 <script>
 let art = null
 let nativeVideo = null
+let allVideos = []
+let favSet = new Set()
+let viewMode = 'all'
+let favReady = false
 
 function closePlayer() {
   if (art) { art.destroy(); art = null }
@@ -80,7 +96,6 @@ async function loadVideos() {
   const wall = document.getElementById('videoWall')
   const loading = document.getElementById('loading')
   const errorEl = document.getElementById('error')
-  wall.innerHTML = ''
   loading.style.display = 'block'
   errorEl.style.display = 'none'
 
@@ -89,9 +104,9 @@ async function loadVideos() {
     if (!resp.ok) throw new Error('HTTP ' + resp.status)
     const data = await resp.json()
     loading.style.display = 'none'
-    const list = Array.isArray(data) ? data : (data && Array.isArray(data.videos) ? data.videos : [])
-    document.getElementById('videoCount').textContent = list.length + ' 部'
-    list.forEach(v => wall.appendChild(createCard(v)))
+    allVideos = Array.isArray(data) ? data : (data && Array.isArray(data.videos) ? data.videos : [])
+    await loadFavorites()
+    renderWall()
   } catch (e) {
     loading.style.display = 'none'
     errorEl.style.display = 'block'
@@ -99,10 +114,62 @@ async function loadVideos() {
   }
 }
 
+async function loadFavorites() {
+  try {
+    const resp = await fetch('palayer.php?fav', { cache: 'no-cache' })
+    if (!resp.ok) throw new Error('HTTP ' + resp.status)
+    const data = await resp.json()
+    const files = Array.isArray(data) ? data : (data && Array.isArray(data.files) ? data.files : [])
+    favSet = new Set(files)
+  } catch (e) {
+    favSet = new Set()
+    console.error('收藏列表加载失败:', e)
+  }
+  favReady = true
+}
+
+function currentList() {
+  return viewMode === 'fav' ? allVideos.filter(v => favSet.has(v.file)) : allVideos
+}
+
+function renderWall() {
+  const wall = document.getElementById('videoWall')
+  const loading = document.getElementById('loading')
+  loading.style.display = 'none'
+  const list = currentList()
+  wall.innerHTML = ''
+  document.getElementById('videoCount').textContent = list.length + ' 部'
+  if (viewMode === 'fav' && list.length === 0) {
+    const hint = document.createElement('div')
+    hint.className = 'empty-hint'
+    hint.textContent = '收藏夹是空的\n点击视频卡片左上角的 ☆ 即可收藏'
+    wall.appendChild(hint)
+    return
+  }
+  list.forEach(v => wall.appendChild(createCard(v)))
+}
+
+function switchView(mode) {
+  viewMode = mode
+  document.getElementById('tabAll').classList.toggle('active', mode === 'all')
+  document.getElementById('tabFav').classList.toggle('active', mode === 'fav')
+  renderWall()
+}
+
 function createCard(v) {
   const card = document.createElement('div')
   card.className = 'video-card'
   card.dataset.url = v.url || ''
+
+  const isFav = favSet.has(v.file)
+  const favBtn = document.createElement('button')
+  favBtn.className = 'fav-btn' + (isFav ? ' on' : '')
+  favBtn.textContent = isFav ? '★' : '☆'
+  favBtn.title = isFav ? '取消收藏' : '收藏'
+  favBtn.addEventListener('click', function(e) {
+    e.stopPropagation()
+    toggleFav(v, favBtn)
+  })
 
   let poster = null
   if (v.poster) {
@@ -132,11 +199,43 @@ function createCard(v) {
     card.appendChild(sub)
   }
 
+  card.appendChild(favBtn)
   if (poster) card.appendChild(poster)
   card.append(overlay, playIcon, title)
 
   card.addEventListener('click', () => openPlayer(v))
   return card
+}
+
+function setFavBtn(btn, v) {
+  const isFav = favSet.has(v.file)
+  btn.className = 'fav-btn' + (isFav ? ' on' : '')
+  btn.textContent = isFav ? '★' : '☆'
+  btn.title = isFav ? '取消收藏' : '收藏'
+}
+
+async function toggleFav(v, btn) {
+  const target = !favSet.has(v.file)
+  if (target) favSet.add(v.file); else favSet.delete(v.file)
+  setFavBtn(btn, v)
+  if (viewMode === 'fav' && !target) renderWall()
+  document.getElementById('videoCount').textContent = currentList().length + ' 部'
+  try {
+    const resp = await fetch('palayer.php?fav', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file: v.file, fav: target }),
+    })
+    if (!resp.ok) throw new Error('HTTP ' + resp.status)
+    const data = await resp.json()
+    if (!data || data.ok !== true) throw new Error('服务器返回异常')
+  } catch (e) {
+    if (target) favSet.delete(v.file); else favSet.add(v.file)
+    setFavBtn(btn, v)
+    if (viewMode === 'fav' && target) renderWall()
+    document.getElementById('videoCount').textContent = currentList().length + ' 部'
+    console.error('收藏操作失败:', e)
+  }
 }
 
 function openPlayer(v) {

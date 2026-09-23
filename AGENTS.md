@@ -22,6 +22,14 @@
 - 封面取 `base.jpg`，否则回退用精灵图 URL（`palayer.php:104-120`）。
 - `readme.md` 已过时（还说精灵图是 `xx.jpg`），以代码为准。
 
+## 收藏（SleekDB）
+
+- 收藏走 `palayer.php?fav`：GET 返回已收藏的 `file`（相对路径）列表（按收藏时间倒序）；POST JSON `{file, fav?}` 增删（省略 `fav` 时按当前状态取反）。`palayer.php` 顶部 `require vendor/autoload.php`。
+- 持久化目录默认 `__DIR__ . '/data'`（SleekDB store 名 `favorites`），可用环境变量 `FAV_DATA_DIR` 覆盖；`data/` 已 gitignore。
+- `SleekDB\Store` 一定要传 `['timeout' => false]`：否则 SleekDB 默认 `timeout=120` 会触发 `E_USER_DEPRECATED`，把 HTML 通知打到响应体里，污染 JSON（前端 `resp.json()` 会挂）。
+- SleekDB 的 where 条件是 `[['字段','=',值]]` 格式（**不允许**关联数组），别写成 `['file' => 'x']`。
+- `index.html`：卡片左上角 ★/☆ 收藏按钮（`e.stopPropagation` 避免误开播放器）；页头「全部 / 收藏夹」两个 tab 切换视图，收藏夹模式按 `favSet` 过滤。
+
 ## 前端配置陷阱
 
 - `openPlayer` 里 `autoSize: false` 不能改回 true：竖屏视频会被缩成窄竖条、控件看不见；进度条精灵图也会错位。

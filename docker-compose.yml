@@ -6,10 +6,14 @@ services:
     environment:
       - "TIMEZONE=Asia/Shanghai"
       - "VIDEO_DIR=/app/public/file"
+      - "FAV_DATA_DIR=/data"
     # https://localhost:12356/
     ports:
       - "12356:80"
     volumes:
+      - player_data:/data
       - .:/app/public
       - ./Caddyfile:/etc/frankenphp/Caddyfile
       - "/home/jcleng/Downloads/mv/:/app/public/file"
+volumes:
+  player_data:

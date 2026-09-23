@@ -2,6 +2,9 @@
 declare(strict_types=1);
 
 $videoDir = rtrim((string)(getenv('VIDEO_DIR') ?: '/home/jcleng/Downloads/mv/upnp/'), '/');
+$favDataDir = rtrim((string)(getenv('FAV_DATA_DIR') ?: __DIR__ . '/data'), '/'); // 收藏持久化(SleekDB 数据目录)
+
+require __DIR__ . '/vendor/autoload.php';
 
 $videoExts = [
     'mp4', 'm4v', 'webm', 'mkv', 'avi', 'mov', 'flv', 'wmv',
@@ -32,8 +35,103 @@ if (isset($_GET['play'])) {
     exit;
 }
 
+if (isset($_GET['fav'])) {
+    handleFavorites();
+    exit;
+}
+
 listVideos($videoDir, $videoExts, $subExts, $thumbExts);
 exit;
+
+function favStore(): \SleekDB\Store
+{
+    // timeout=>false: 否则 SleekDB 默认 timeout 会触发 Deprecated 通知污染 JSON 输出
+    return new \SleekDB\Store('favorites', $GLOBALS['favDataDir'], ['timeout' => false]);
+}
+
+/**
+ * 收藏接口 (SleekDB 持久化):
+ *   GET  ?fav          -> 返回收藏的视频文件列表 (按收藏时间倒序)
+ *   POST ?fav  JSON    -> body: {file: string, fav?: bool}
+ *                          fav 省略时按当前状态取反 (toggle);
+ *                          fav=true 收藏, fav=false 取消收藏
+ */
+function handleFavorites(): void
+{
+    header('Content-Type: application/json; charset=utf-8');
+
+    $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+    if ($method === 'OPTIONS') {
+        http_response_code(204);
+        return;
+    }
+
+    try {
+        $store = favStore();
+    } catch (Throwable $e) {
+        http_response_code(500);
+        echo json_encode(['ok' => false, 'error' => '收藏存储初始化失败: ' . $e->getMessage()], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+
+    if ($method === 'GET') {
+        try {
+            $docs = $store->findAll(['added_at' => 'desc']);
+        } catch (Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['ok' => false, 'error' => '读取收藏失败: ' . $e->getMessage()], JSON_UNESCAPED_UNICODE);
+            return;
+        }
+        $files = [];
+        foreach ($docs as $doc) {
+            if (isset($doc['file']) && is_string($doc['file'])) {
+                $files[] = $doc['file'];
+            }
+            if (count($files) >= 500) break; // 防异常数据撑爆
+        }
+        echo json_encode([
+            'ok' => true,
+            'count' => count($files),
+            'files' => $files,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        return;
+    }
+
+    if ($method !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['ok' => false, 'error' => '方法不支持'], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+
+    $raw = file_get_contents('php://input');
+    $body = json_decode($raw === false ? '' : $raw, true);
+    if (!is_array($body)) {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'error' => '无效的 JSON 请求体'], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+
+    $file = isset($body['file']) && is_string($body['file']) ? trim($body['file']) : '';
+    if ($file === '' || str_contains($file, "\0") || str_starts_with($file, '/') || str_contains($file, '..')) {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'error' => '无效的 file 字段'], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+
+    try {
+        $existing = $store->findOneBy([['file', '=', $file]]);
+        $fav = array_key_exists('fav', $body) ? (bool)$body['fav'] : ($existing === null);
+        if ($fav && $existing === null) {
+            $store->insert(['file' => $file, 'added_at' => time()]);
+        } elseif (!$fav && $existing !== null) {
+            $store->deleteBy([['file', '=', $file]]);
+        }
+        echo json_encode(['ok' => true, 'file' => $file, 'fav' => $fav], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    } catch (Throwable $e) {
+        http_response_code(500);
+        echo json_encode(['ok' => false, 'error' => '收藏操作失败: ' . $e->getMessage()], JSON_UNESCAPED_UNICODE);
+    }
+}
 
 function listVideos(string $dir, array $videoExts, array $subExts, array $thumbExts): void
 {
