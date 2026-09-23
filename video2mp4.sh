@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# sprite.sh <视频文件>
+# video2mp4.sh <视频文件>
+# 对视频文件进行重新无损编码
 
 SRC="${1:-}"
 DIR=$(dirname "$SRC")
