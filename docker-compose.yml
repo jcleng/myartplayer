@@ -1,0 +1,13 @@
+services:
+  frankenphp:
+    image: registry.cn-hangzhou.aliyuncs.com/jcleng/dunglas-frankenphp
+    container_name: frankenphp
+    environment:
+      - "TIMEZONE=Asia/Shanghai"
+      - "VIDEO_DIR=/home/jcleng/work/mywork/myartplayer"
+    # https://localhost:12356/
+    ports:
+      - "12356:443"
+    volumes:
+      - .:/app/public
+      - "/home/jcleng/work/mywork:/home/jcleng/work/mywork"
