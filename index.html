@@ -49,6 +49,7 @@ body{background:#0a0a0f;color:#fff;font-family:-apple-system,BlinkMacSystemFont,
 .player-section .player-bar .fav-btn{flex-shrink:0;padding:6px 14px;background:rgba(255,255,255,.08);border:none;color:#bbb;font-size:14px;border-radius:8px;cursor:pointer;transition:background .2s,color .2s}
 .player-section .player-bar .fav-btn:hover{background:rgba(255,255,255,.15);color:#fff}
 .player-section .player-bar .fav-btn.on{color:#ffd700;background:rgba(255,215,0,.14)}
+.player-section .player-bar .fav-btn.hidden{display:none}
 .player-section .player-bar .close-btn{flex-shrink:0;padding:6px 16px;background:rgba(255,255,255,.08);border:none;color:#aaa;font-size:13px;border-radius:8px;cursor:pointer;transition:background .2s}
 .player-section .player-bar .close-btn:hover{background:rgba(255,255,255,.15);color:#fff}
 .toast{position:fixed;top:18px;left:50%;transform:translateX(-50%) translateY(-10px);background:rgba(15,15,25,.9);color:#fff;padding:9px 20px;border-radius:10px;font-size:13px;z-index:1000;opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;box-shadow:0 6px 24px rgba(0,0,0,.4)}
@@ -212,6 +213,16 @@ function updateFavBtnUI() {
   btn.classList.toggle('on', isFav)
   btn.textContent = isFav ? '★' : '☆'
   btn.title = isFav ? '取消收藏' : '收藏'
+  if (art) {
+    art.controls.update({
+      name: 'fav',
+      index: 10,
+      position: 'right',
+      html: isFav ? '<span style="color:#ffd700">★</span>' : '☆',
+      tooltip: isFav ? '取消收藏' : '收藏',
+      click: function() { togglePlayerFav() },
+    })
+  }
 }
 
 function togglePlayerFav() {
@@ -353,6 +364,16 @@ function openPlayer(v) {
           disablePictureInPicture: true,
           controlsList: 'nodownload noplaybackrate noremoteplayback',
         },
+        controls: [
+          {
+            name: 'fav',
+            index: 10,
+            position: 'right',
+            html: favSet.has(v.file) ? '<span style="color:#ffd700">★</span>' : '☆',
+            tooltip: favSet.has(v.file) ? '取消收藏' : '收藏',
+            click: function() { togglePlayerFav() },
+          },
+        ],
       }
 
       if (v.thumbnails && v.thumbnails.url) {
@@ -437,6 +458,7 @@ function openPlayer(v) {
 
       art = new Artplayer(config)
       art.video.addEventListener('contextmenu', e => e.preventDefault())
+      document.getElementById('playerFavBtn').classList.add('hidden')
       return
     } catch (e) {
       console.error('Artplayer failed:', e)
@@ -454,6 +476,7 @@ function openPlayer(v) {
   wrap.innerHTML = ''
   wrap.appendChild(nv)
   nativeVideo = nv
+  document.getElementById('playerFavBtn').classList.remove('hidden')
 }
 
 loadVideos()
