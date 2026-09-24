@@ -218,6 +218,34 @@ function togglePlayerFav() {
   if (currentVideo) toggleFav(currentVideo)
 }
 
+function deleteCurrentVideo() {
+  const v = currentVideo
+  if (!v || !v.file) return Promise.resolve(false)
+  if (!confirm('确定删除该视频吗？\n将同时删除精灵图，此操作不可恢复。\n\n' + (v.title || v.file))) {
+    return Promise.resolve(false)
+  }
+  return fetch('palayer.php?delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ file: v.file }),
+  })
+    .then(function(resp) { if (!resp.ok) throw new Error('HTTP ' + resp.status); return resp.json() })
+    .then(function(data) {
+      if (!data || data.ok !== true) throw new Error('服务器返回异常')
+      allVideos = allVideos.filter(x => x.file !== v.file)
+      favSet.delete(v.file)
+      closePlayer()
+      renderWall()
+      showToast('已删除：' + (v.title || v.file))
+      return true
+    })
+    .catch(function(e) {
+      console.error('删除失败:', e)
+      showToast('删除失败：' + (e.message || '请重试'))
+      return false
+    })
+}
+
 let toastTimer = null
 function showToast(msg) {
   const t = document.getElementById('toast')
@@ -395,6 +423,17 @@ function openPlayer(v) {
           },
         }
       }
+
+      config.settings = config.settings || []
+      config.settings.push({
+        html: '删除视频',
+        // tooltip: '删除',
+        icon: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>',
+        onClick: function(item, $dom, event) {
+          deleteCurrentVideo()
+          return ''
+        },
+      })
 
       art = new Artplayer(config)
       art.video.addEventListener('contextmenu', e => e.preventDefault())

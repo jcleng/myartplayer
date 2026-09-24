@@ -40,6 +40,11 @@ if (isset($_GET['fav'])) {
     exit;
 }
 
+if (isset($_GET['delete'])) {
+    handleDelete($videoDir, $videoExts);
+    exit;
+}
+
 listVideos($videoDir, $videoExts, $subExts, $thumbExts);
 exit;
 
@@ -131,6 +136,113 @@ function handleFavorites(): void
         http_response_code(500);
         echo json_encode(['ok' => false, 'error' => '收藏操作失败: ' . $e->getMessage()], JSON_UNESCAPED_UNICODE);
     }
+}
+
+/**
+ * 删除视频接口 (?delete):
+ *   POST  JSON -> body: {file: string}  (相对 VIDEO_DIR 的视频文件路径)
+ *   同时删除视频文件本体及其精灵图 (<base>.<COLS>x<ROWS>.jpg / 旧版 <base>.jpg),
+ *   并顺手清理收藏记录。
+ */
+function handleDelete(string $dir, array $videoExts): void
+{
+    header('Content-Type: application/json; charset=utf-8');
+
+    $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+    if ($method === 'OPTIONS') {
+        http_response_code(204);
+        return;
+    }
+    if ($method !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['ok' => false, 'error' => '仅支持 POST'], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+
+    $raw = file_get_contents('php://input');
+    $body = json_decode($raw === false ? '' : $raw, true);
+    if (!is_array($body)) {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'error' => '无效的 JSON 请求体'], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+
+    $file = isset($body['file']) && is_string($body['file']) ? trim($body['file']) : '';
+    if ($file === '' || str_contains($file, "\0") || str_starts_with($file, '/') || str_contains($file, '..')) {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'error' => '无效的 file 字段'], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+
+    $root = realpath($dir);
+    if ($root === false || !is_dir($root)) {
+        http_response_code(500);
+        echo json_encode(['ok' => false, 'error' => 'VIDEO_DIR not found: ' . $dir], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+
+    $full = realpath($root . DIRECTORY_SEPARATOR . $file);
+    if ($full === false || !str_starts_with($full, $root . DIRECTORY_SEPARATOR) || !is_file($full)) {
+        http_response_code(404);
+        echo json_encode(['ok' => false, 'error' => '文件不存在'], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+
+    $ext = strtolower(pathinfo($full, PATHINFO_EXTENSION));
+    if (!in_array($ext, $videoExts, true)) {
+        http_response_code(403);
+        echo json_encode(['ok' => false, 'error' => '只能删除视频文件'], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+
+    $dirName = dirname($full);
+    $base = pathinfo($full, PATHINFO_FILENAME);
+    $deleted = [];
+    $errors = [];
+
+    // 视频本体
+    if (@unlink($full)) {
+        $deleted[] = $file;
+    } else {
+        $errors[] = $file;
+    }
+
+    // 精灵图: 网格命名 <base>.<COLS>x<ROWS>.jpg|jpeg, 以及旧版 <base>.jpg|jpeg
+    $thumbPrefix = preg_quote($base . '.', '/');
+    foreach (glob($dirName . DIRECTORY_SEPARATOR . $base . '.*') as $cand) {
+        $bn = pathinfo($cand, PATHINFO_BASENAME);
+        if (!preg_match('/^' . $thumbPrefix . '(\d+)x(\d+)\.(?:jpg|jpeg)$/i', $bn)
+            && !preg_match('/^' . $thumbPrefix . '(?:jpg|jpeg)$/i', $bn)) {
+            continue;
+        }
+        if (@unlink($cand)) {
+            $deleted[] = $bn;
+        } else {
+            $errors[] = $bn;
+        }
+    }
+
+    // 清理收藏记录
+    try {
+        $store = favStore();
+        $store->deleteBy([['file', '=', $file]]);
+    } catch (Throwable $e) {
+        // 收藏清理失败不阻塞删除
+    }
+
+    $fileDeleted = in_array($file, $deleted, true);
+    if ($fileDeleted && empty($errors)) {
+        echo json_encode(['ok' => true, 'deleted' => $deleted, 'count' => count($deleted)], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        return;
+    }
+
+    http_response_code(500);
+    echo json_encode([
+        'ok' => false,
+        'error' => $fileDeleted ? '部分关联文件删除失败' : '视频文件删除失败',
+        'deleted' => $deleted,
+        'errors' => $errors,
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 }
 
 function listVideos(string $dir, array $videoExts, array $subExts, array $thumbExts): void
